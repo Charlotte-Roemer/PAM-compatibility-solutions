@@ -1,7 +1,11 @@
 
 library(tidyverse)
 
+setwd("/home/charlotte/Documents/R/PAM-compatibility-solutions/Correction-factor")
 source("fun_for_bats.R")
+
+#### !!!!!!!!!! Need to add the 0 for each species !!!!!!!!!!!! #####
+
 
 # Filter probabilities by...
 Filter_proba = c(0.5, 0.9)

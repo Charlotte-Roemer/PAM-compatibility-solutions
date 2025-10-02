@@ -15,7 +15,7 @@ Activity_file = Activity_file %>%
   filter(espece == "Pippip", probability_filter == 0.5)
 
 # # Remove false result
-# Activity_file = Activity_file %>% 
+# Activity_file = Activity_file %>%
 #   filter(!(Site=="B1" & TriggerLevel == 5))
 
 # Consider Batlogger A and Batlogger A+ the same machine
@@ -28,13 +28,39 @@ Activity_file$ID = paste0(Activity_file$Recorder, "_", Activity_file$TriggerLeve
 Activity_file = Activity_file %>% 
   filter(Site != "CE_0")
 
-# Change TriggerLevel names
+# Adapt Trigger Level so that it goes in the right direction
+Activity_file$TriggerLevel_adjusted = Activity_file$TriggerLevel
+Activity_file$TriggerLevel_adjusted = ifelse(Activity_file$Recorder!="Audiomoth",-Activity_file$TriggerLevel, Activity_file$TriggerLevel_adjusted)
+Activity_file$TriggerLevel_adjusted = ifelse(Activity_file$Recorder=="Audiomoth" & Activity_file$TriggerLevel==0, 100, Activity_file$TriggerLevel_adjusted)
+Activity_file$TriggerLevel_adjusted = ifelse(Activity_file$Recorder=="Audiomoth" & Activity_file$TriggerLevel==5, 26, Activity_file$TriggerLevel_adjusted)
+
+# Create short names
+Activity_file$TriggerLevel_Short = Activity_file$TriggerLevel_adjusted
+Activity_file$TriggerLevel_Short = ifelse(Activity_file$TriggerLevel_adjusted==0, "High", Activity_file$TriggerLevel_Short)
+Activity_file$TriggerLevel_Short = ifelse(Activity_file$TriggerLevel_adjusted==-24, "Low", Activity_file$TriggerLevel_Short)
+Activity_file$TriggerLevel_Short = ifelse(Activity_file$TriggerLevel_adjusted==-10, "Low", Activity_file$TriggerLevel_Short)
+Activity_file$TriggerLevel_Short = ifelse(Activity_file$TriggerLevel_adjusted==26, "Low", Activity_file$TriggerLevel_Short)
+Activity_file$TriggerLevel_Short = ifelse(Activity_file$TriggerLevel_adjusted==27, "Medium", Activity_file$TriggerLevel_Short)
+Activity_file$TriggerLevel_Short = ifelse(Activity_file$TriggerLevel_adjusted==100, "High", Activity_file$TriggerLevel_Short)
+
+# Add ID for Recorder + Sensitivity Level
+Activity_file$ID = paste0(Activity_file$Recorder, "_", Activity_file$TriggerLevel_adjusted)
+
+# Calculate Relative activity to make results comparable
+Activity_file <- Activity_file %>%
+  group_by(DateNight) %>%
+  mutate(
+    sm4bat_0_activity = nb_triggered_files[ID == "SM4BAT_0"],
+    Relative_activity = nb_triggered_files / sm4bat_0_activity
+  ) %>%
+  ungroup() %>% 
+  as.data.frame()
 
 Activity_file$Recorder = as.factor(Activity_file$Recorder)
-Activity_file$TriggerLevel = as.factor(Activity_file$TriggerLevel)
+Activity_file$TriggerLevel_adjusted = as.factor(Activity_file$TriggerLevel_adjusted)
 #mycol <- c("Audiomoth"= "#E69F00","Batcorder"="#56B4E9","Batlogger"="#009E73","SM4BAT"="#D55E00")
-ggplot(Activity_file, aes(x = Recorder, y = nb_triggered_files)) +
-  geom_boxplot(aes(fill = TriggerLevel), color = "grey25", linewidth = 0.2, coef = 1.5) +
+ggplot(Activity_file, aes(x = Recorder, y = Relative_activity)) +
+  geom_boxplot(aes(fill = TriggerLevel_Short), color = "grey25", linewidth = 0.5, coef = 1.5) +
   #scale_fill_manual(values = mycol) +
   theme_minimal()
 

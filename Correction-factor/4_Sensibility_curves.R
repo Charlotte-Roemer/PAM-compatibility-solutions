@@ -1,54 +1,122 @@
+
+setwd("/home/charlotte/Documents/R/PAM-compatibility-solutions/Correction-factor")
 source("fun_for_bats.R")
 
 library(ggplot2)
 library(tidygam)
 library(mgcv)
-library(dplyr)
+library(tidyverse)
 library(MASS)
 library(DHARMa)
 library(glmmTMB)
-mycol <- c("adm"= "#E69F00","bcd"="#56B4E9","blg"="#009E73","sm4"="#D55E00")
+library(ordbetareg)
+mycol <- c("Audiomoth"= "#E69F00","Batcorder"="#56B4E9","Batlogger"="#009E73","SM4BAT"="#D55E00")
 
-# upload data
-design_tcs <- read.csv2("design_tcs.csv")
-design_tcs$sensi <- as.factor(design_tcs$sensi)
-design_tcs$recorder <- as.factor(design_tcs$recorder)
-design_tcs$ID <- as.factor(design_tcs$ID)
-summary(design_tcs)
-design_tcs <- design_tcs %>%
-  group_by(recorder) %>%
-  mutate(relative_contacts=(contacts-min(contacts))/(max(contacts)-min(contacts))) #guarantee for relative contacts
+Activity_file <- read_delim("/home/charlotte/Documents/Post-Doc/Stages/Laureen et Nathan/Analyse/Activity_file.csv")
 
-#### GAM MODEL ####
-gam_model <- gam(relative_contacts~s(sensi_val, by=recorder, k=11), data=design_tcs, fx=T) #k may change accorind to the real number of settings
+# Keep only common pipistrelle for 0.5 confidence
+Activity_file = Activity_file %>% 
+  filter(espece == "Pippip", probability_filter == 0.5)
 
-model_p <- predict_gam(gam_model)
-model_p
+# Consider Batlogger A and Batlogger A+ the same machine
+Activity_file$Recorder = gsub("^Batlogger.*", "Batlogger", Activity_file$Recorder)
 
-#scaling sensibilities to 0;1
-model_p <- model_p %>%
-  group_by(recorder) %>%
-  mutate(sensi_scaled=(sensi_val-min(sensi_val))/(max(sensi_val)-min(sensi_val))) %>%
-  ungroup() 
+# # Keep only Site CE_0 (for sensititivity curve)
+# Activity_file = Activity_file %>% 
+#   filter(Site == "CE_0")
 
-p_gam <- ggplot(model_p, aes(x = sensi_scaled, y = relative_contacts, color = recorder)) +
-  geom_line(linewidth = 1.25) +
-  geom_ribbon(aes(ymin = lower_ci, ymax = upper_ci, fill = recorder), alpha = 0.15, color = NA) +
-  scale_color_manual(values = mycol) +
-  scale_fill_manual(values = mycol) +
-  labs(x = "Sensibilities",
-       y = "Relative contacts",
-       color = "Recorders :",
-       fill = "Recorders :") +
-  theme_minimal() +
-  theme(axis.text = element_text(size = 10),
-        axis.title = element_text(size = 11),
-        axis.title.x = element_text(margin = margin(t = 15)),
-        axis.title.y = element_text(vjust = 2),
-        panel.grid.major.y = element_line(linewidth = 0.8))
-p_gam
+# Remove -48dB Trigger for SM4BAT because it cannot fit on the curve
+Activity_file = Activity_file %>% 
+  filter(!(Recorder == "SM4BAT" & TriggerLevel == -42))
 
-# Now we see the real shape of the curves for each recorder
+# Adapt Trigger Level so that it goes in the right direction
+Activity_file$TriggerLevel_adjusted = Activity_file$TriggerLevel
+Activity_file$TriggerLevel_adjusted = ifelse(Activity_file$Recorder!="Audiomoth",-Activity_file$TriggerLevel, Activity_file$TriggerLevel_adjusted)
+Activity_file$TriggerLevel_adjusted = ifelse(Activity_file$Recorder=="Audiomoth" & Activity_file$TriggerLevel==0, 100, Activity_file$TriggerLevel_adjusted)
+Activity_file$TriggerLevel_adjusted = ifelse(Activity_file$Recorder=="Audiomoth" & Activity_file$TriggerLevel==1, 40, Activity_file$TriggerLevel_adjusted)
+Activity_file$TriggerLevel_adjusted = ifelse(Activity_file$Recorder=="Audiomoth" & Activity_file$TriggerLevel==2, 32, Activity_file$TriggerLevel_adjusted)
+Activity_file$TriggerLevel_adjusted = ifelse(Activity_file$Recorder=="Audiomoth" & Activity_file$TriggerLevel==3, 30, Activity_file$TriggerLevel_adjusted)
+Activity_file$TriggerLevel_adjusted = ifelse(Activity_file$Recorder=="Audiomoth" & Activity_file$TriggerLevel==5, 26, Activity_file$TriggerLevel_adjusted)
+Activity_file$TriggerLevel_adjusted = ifelse(Activity_file$Recorder=="Audiomoth" & Activity_file$TriggerLevel==7, 22, Activity_file$TriggerLevel_adjusted)
+Activity_file$TriggerLevel_adjusted = ifelse(Activity_file$Recorder=="Audiomoth" & Activity_file$TriggerLevel==8, 22, Activity_file$TriggerLevel_adjusted)
+Activity_file$TriggerLevel_adjusted = ifelse(Activity_file$Recorder=="Audiomoth" & Activity_file$TriggerLevel==9, 20, Activity_file$TriggerLevel_adjusted)
+
+# Add ID for Recorder + Sensitivity Level
+Activity_file$ID = paste0(Activity_file$Recorder, "_", Activity_file$TriggerLevel)
+
+# Prepare data for analysis (factors)
+Activity_file$Recorder = as.factor(Activity_file$Recorder)
+#Activity_file$TriggerLevel = as.factor(Activity_file$TriggerLevel)
+#Activity_file$ID = as.factor(Activity_file$ID)
+
+# Calculate Relative activity to make results comparable
+Activity_file <- Activity_file %>%
+  group_by(DateNight) %>%
+  mutate(
+    sm4bat_0_activity = nb_triggered_files[ID == "SM4BAT_0"],
+    Relative_activity = nb_triggered_files / sm4bat_0_activity
+  ) %>%
+  ungroup() %>% 
+  as.data.frame()
+
+#scaling sensitivities to 0;1
+Activity_file <- Activity_file %>%
+  group_by(Recorder) %>%
+  mutate(TriggerLevel_scaled=(TriggerLevel_adjusted-min(TriggerLevel_adjusted))/(max(TriggerLevel_adjusted)-min(TriggerLevel_adjusted))) %>%
+  ungroup()
+
+#### MODEL ####
+OBR_model = ordbetareg(bf(Relative_activity ~ TriggerLevel_scaled * Recorder + 
+                            I(TriggerLevel_scaled^2) * Recorder), 
+                       data=Activity_file, 
+                       chains=1,iter=2000,refresh=0)
+
+newdat <- expand.grid(
+  TriggerLevel_scaled = seq(min(Activity_file$TriggerLevel_scaled),
+                            max(Activity_file$TriggerLevel_scaled),
+                            length.out = 100),
+  Recorder = unique(Activity_file$Recorder)
+)
+preds <- fitted(OBR_model, newdata = newdat, summary = TRUE)
+newdat$Estimate <- preds[,"Estimate"]
+newdat$Q2.5     <- preds[,"Q2.5"]
+newdat$Q97.5    <- preds[,"Q97.5"]
+
+ggplot(newdat, aes(x = TriggerLevel_scaled, y = Estimate, color = Recorder)) +
+  geom_line(linewidth = 1) +
+  geom_ribbon(aes(ymin = Q2.5, ymax = Q97.5, fill = Recorder), alpha = 0.2, color = NA) +
+  labs(y = "Predicted Relative Activity") +
+  theme_minimal()
+
+
+
+
+#gam_model <- gam(Relative_activity~s(TriggerLevel_scaled, by=Recorder), data=Activity_file, fx=T, family = betar()) #k may change according to the real number of settings
+#model_p <- predict_gam(gam_model)
+#model_p
+
+# #scaling sensitivities to 0;1
+# model_p <- model_p %>%
+#   group_by(Recorder) %>%
+#   mutate(TriggerLevel_scaled=(TriggerLevel-min(TriggerLevel))/(max(TriggerLevel)-min(TriggerLevel))) %>%
+#   ungroup() 
+
+# p_gam <- ggplot(model_p, aes(x = TriggerLevel_scaled, y = Relative_activity, color = Recorder)) +
+#   geom_line(linewidth = 1.25) +
+#   geom_ribbon(aes(ymin = lower_ci, ymax = upper_ci, fill = Recorder), alpha = 0.15, color = NA) +
+#   scale_color_manual(values = mycol) +
+#   scale_fill_manual(values = mycol) +
+#   labs(x = "Scaled Trigger Level",
+#        y = "Relative number of triggered files per night",
+#        color = "Recorders :",
+#        fill = "Recorders :") +
+#   theme_minimal() +
+#   theme(axis.text = element_text(size = 10),
+#         axis.title = element_text(size = 11),
+#         axis.title.x = element_text(margin = margin(t = 15)),
+#         axis.title.y = element_text(vjust = 2),
+#         panel.grid.major.y = element_line(linewidth = 0.8))
+# p_gam
 
 #### EQUATION EXTRACTION 
 
