@@ -1,7 +1,7 @@
 # PAM-compatibility-solutions
 Solutions for big datasets with multiple recorder sensitivities in the PAM of bats
 
-Authors of the scripts: Nathan Besnier, Laureen Dret, Alexandre Grave, Charlotte Roemer
+Authors: Nathan Besnier, Laureen Dret, Alexandre Grave, Charlotte Roemer
 
 ## fun_for_bats.R
 Assembles all functions necessary for the other scripts.
@@ -16,9 +16,10 @@ more than one bat passes for a given species in an interval of one minute, only
 the bat pass with the highest probability of identification will be kept.
 
 ## 2_Create_non-target_activity_file.R
-This file is created to control the influence of non-target sounds (other than the focus species).
+This file is created to control the influence of non-target sounds (other than the 
+focus species) in subsequent scripts.
 The focus species will be removed from this table in the subsequent scripts.
-Calculates the number of bat passes per night any sound event recorded at 0 s
+Calculates the number of bat passes per night for any sound event recorded at 0 s
 according to:
 - A chosen threshold for the probability of ID. If a probability of 0.5 is chosen, 
 the number of bat passes per night will exclude bat passes with a probability < 0.5
@@ -31,9 +32,9 @@ the activity of non-target sounds on the sensitivity differences of bat recorder
 Build models to model the sensitivity curves of the bat recorders.
 
 ## 5_Correction_factors.R
-Predicts a correction factor according to 
+Predicts a correction factor according to: 
 - The time interval chosen to count bat activity
-- The recorders in use in a dataset
+- The recorders in use in a dataset<br>
 Applies the correction factors to the activity counts to obtain corrected activity counts.
 
 
