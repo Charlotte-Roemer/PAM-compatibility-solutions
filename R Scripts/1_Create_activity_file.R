@@ -9,8 +9,8 @@ source("fun_for_bats.R")
 # Filter probabilities by...
 Filter_proba = c(0.5, 0.9)
 
-# Time interval: "5 seconds", "minute", "5 minutes", "10 minutes", "hour"
-Time_interval = "5 seconds"
+# Time interval: "5 seconds", "minute", "5 minutes", "10 minutes", "hour", "day"
+Time_interval = "1 day"
 
 # Load Observation results
 Obs = read_delim("/home/charlotte/Documents/Post-Doc/Stages/Laureen et Nathan/Analyse/Obs_Stage_Laureen_Nathan_2025-10-27.csv")
@@ -29,6 +29,10 @@ for(i in 1:length(ListFilesMeta)){
 Distance_veg = read_delim("/home/charlotte/Documents/Post-Doc/Stages/Laureen et Nathan/Analyse/Distance.csv")
 
 #### Action ####
+
+# Add date of night
+Obs = Obs %>% 
+  mutate(DateNight = DateNightFun(donnee))
 
 # Aggregate data if time interval is higher than 5 seconds
 if(Time_interval != "5 seconds") {
@@ -67,5 +71,8 @@ Activity_file = Activity_file %>%
   filter(!(Site == "L1" & DateNight == "2025-05-25")) 
 
 write_csv(Activity_file, 
-          paste0("/home/charlotte/Documents/Post-Doc/Stages/Laureen et Nathan/Analyse/Activity_file_", Time_interval, ".csv"))
+          paste0("/home/charlotte/Documents/Post-Doc/Stages/Laureen et Nathan/Analyse/Activity_file_", 
+                 str_replace(Time_interval, " ", "_"), ".csv"))
+
+
 

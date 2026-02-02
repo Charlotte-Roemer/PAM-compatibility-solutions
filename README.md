@@ -32,9 +32,9 @@ the activity of non-target sounds on the sensitivity differences of bat recorder
 Build models to model the sensitivity curves of the bat recorders.
 
 ## 5_Correction_factors.R
+Applies the correction factors to the activity counts to obtain corrected activity counts.
 Predicts a correction factor according to: 
 - The time interval chosen to count bat activity
 - The recorders in use in a dataset<br>
-Applies the correction factors to the activity counts to obtain corrected activity counts.
 
 

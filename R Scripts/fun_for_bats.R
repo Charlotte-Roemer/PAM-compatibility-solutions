@@ -56,19 +56,30 @@ Recorder_rename <- function(Recorder_column) {
 
 #### AGGREGATE DETECTIONS ####
 aggregate_detections <- function(df, round_to) {
-  df %>%
-    mutate(datetime = as.POSIXct(DateTimefun(donnee), format = "%Y-%m-%d %H:%M:%S")) %>% 
-    mutate(datetime = floor_date(datetime, unit = round_to)) %>%
-    group_by(datetime, participation, espece) %>%
-    slice_max(tadarida_probabilite, with_ties = FALSE) %>% # keep highest probability
-    ungroup()
+  if(Time_interval == "day"){
+    df %>%
+      select(-frequence_mediane, -temps_debut, -temps_fin) %>% 
+      mutate(datetime = as.POSIXct(DateNight, format = "%Y-%m-%d")) %>% 
+      mutate(datetime = floor_date(datetime, unit = round_to)) %>%
+      group_by(datetime, participation, espece) %>%
+      slice_max(tadarida_probabilite, with_ties = FALSE) %>% # keep highest probability
+      ungroup()
+  }else{
+    df %>%
+      select(-frequence_mediane, -temps_debut, -temps_fin) %>% 
+      mutate(datetime = as.POSIXct(DateTimefun(donnee), format = "%Y-%m-%d %H:%M:%S")) %>% 
+      mutate(datetime = floor_date(datetime, unit = round_to)) %>%
+      group_by(datetime, participation, espece) %>%
+      slice_max(tadarida_probabilite, with_ties = FALSE) %>% # keep highest probability
+      ungroup()
+  }
+  
 }
 
 ####  SUMMARISE ACTIVITY PER NIGHT #### 
 Activity_summary <- function(file, proba) {
   Result = file %>% 
     select(tadarida_probabilite, donnee, participation, espece) %>% 
-    mutate(DateNight = DateNightFun(donnee)) %>% 
     filter(tadarida_probabilite > proba) %>% 
     group_by(participation, DateNight, espece) %>% 
     summarise(nb_triggered_files = length(donnee)) %>% 
@@ -92,13 +103,11 @@ Species_activity_at_0 <- function(file) {
 
 #### GATHERING COEFF OF GLM ####
 
-get_eq <- function(coef1) {
-  b <- coefs["(Intercept)"]
-  if (coef1 != "adm") {
-    b <- b + coefs[paste0("recorder", coef1)]
-  }
-  a <- coefs["sensi_val"]
-  eq <- paste0("y_", coef1, " = exp(", round(a, 3), "x", round(b, 3), ")")
+get_eq <- function(coef1, recorder1) {
+  recorderID = paste0("ID", recorder1)
+  b <- coefs["(Intercept)"][[1]]
+  a <- coefs[recorderID][[1]]
+  eq <- paste0("y_", recorder1, " = exp(", round(a, 3), "x + ", round(b, 3), ")")
   return(eq)
 }
 

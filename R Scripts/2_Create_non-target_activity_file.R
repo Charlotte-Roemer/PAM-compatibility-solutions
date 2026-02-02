@@ -1,7 +1,7 @@
 
 library(tidyverse)
 
-setwd("/home/charlotte/Documents/R/PAM-compatibility-solutions/Correction-factor")
+setwd("/home/charlotte/Documents/R/PAM-compatibility-solutions/R Scripts")
 source("fun_for_bats.R")
 
 # Filter probabilities by...
