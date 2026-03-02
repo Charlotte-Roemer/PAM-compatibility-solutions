@@ -4,10 +4,7 @@ setwd("/home/charlotte/Documents/R/PAM-compatibility-solutions/R Scripts")
 source("fun_for_bats.R")
 
 library(ggplot2)
-library(tidygam)
-library(mgcv)
 library(tidyverse)
-library(MASS)
 library(DHARMa)
 library(glmmTMB)
 library(ordbetareg)
@@ -57,10 +54,6 @@ for (i in 1:length(List_Time_interval)){
       # Consider Batlogger A and Batlogger A+ the same machine
       Activity_file$Recorder = gsub("^Batlogger.*", "Batlogger", Activity_file$Recorder)
       
-      # # Keep only Site CE_0 (for sensititivity curve)
-      # Activity_file = Activity_file %>% 
-      #   filter(Site == "CE_0")
-      
       # Remove -48dB Trigger for SM4BAT because it cannot fit on the curve
       Activity_file = Activity_file %>% 
         filter(!(Recorder == "SM4BAT" & TriggerLevel == -42))
@@ -93,7 +86,7 @@ for (i in 1:length(List_Time_interval)){
         filter(probability_filter == Proba) %>% 
         group_by(DateNight, idparticipation) %>%
         summarise(nb_triggered_files_insects = sum(nb_triggered_files[espece == "Insect_0s"]),
-                  nb_triggered_files_noise = sum(nb_triggered_files[espece == "Noise_0s"]),
+                  nb_triggered_files_noise = sum(nb_triggered_files[espece == "noise_0s"]),
                   nb_triggered_files_bats = sum(nb_triggered_files[espece %in% List_bats_0s]))
       
       # Prepare data for analysis (factors)
@@ -110,8 +103,7 @@ for (i in 1:length(List_Time_interval)){
         ungroup() %>% 
         as.data.frame()
       
-      # Confirm this decision with Christian!!!
-      # Put Relative activity at 1 even if it is above 1
+      # Force relative activity at 1 even if it is a little bit above 1
       Activity_file_for_model$Relative_activity = ifelse(Activity_file_for_model$Relative_activity>1, 
                                                          1, 
                                                          Activity_file_for_model$Relative_activity)
@@ -132,6 +124,13 @@ for (i in 1:length(List_Time_interval)){
         mutate(TriggerLevel_scaled=(TriggerLevel_adjusted-min(TriggerLevel_adjusted))/(max(TriggerLevel_adjusted)-min(TriggerLevel_adjusted))) %>%
         ungroup()
       
+      # Save scaled triggers for later (only once)
+      Scaled_triggers = Activity_file_for_model %>% 
+        dplyr::select(Recorder, TriggerLevel, TriggerLevel_adjusted, TriggerLevel_scaled) %>% 
+        distinct() %>% 
+        arrange(Recorder, TriggerLevel)
+      write_csv(Scaled_triggers, "/home/charlotte/Documents/Post-Doc/Stages/Laureen et Nathan/Analyse/Courbe de sensibilité/Models/Scaled_triggers.csv")
+      
       # Plot activity look
       hist(Activity_file_for_model$Relative_activity)
       
@@ -143,14 +142,14 @@ for (i in 1:length(List_Time_interval)){
                                cores=3, chains = 3, iter = 2000,
                                save_pars = save_pars(all = TRUE))
       
-      OBR_model_2 = ordbetareg(bf(Relative_activity ~ TriggerLevel_scaled * Recorder + 
+      OBR_model_2 = ordbetareg(bf(Relative_activity ~ TriggerLevel_scaled * Recorder +
                                     I(TriggerLevel_scaled^2) * Recorder +
                                     sm4bat_0_noise_insect_bat_activity +
-                                    (1 | Site/DateNight)), 
-                               data = Activity_file_for_model, 
+                                    (1 | Site/DateNight)),
+                               data = Activity_file_for_model,
                                cores=3, chains = 3, iter = 2000,
                                save_pars = save_pars(all = TRUE)) # There were 408 transitions after warmup that exceeded the maximum treedepth.
-      
+
       # OBR_model_3 = ordbetareg(bf(Relative_activity ~ TriggerLevel_scaled * Recorder + 
       #                               I(TriggerLevel_scaled^2) * Recorder +
       #                               Distance_vegetation +
@@ -170,10 +169,10 @@ for (i in 1:length(List_Time_interval)){
       # 
       beep(2)
       
-      # Diagnostic
-      OBR_model_1
-      #plot(OBR_model, variable = "^b_", regex = TRUE)
-      pp_check(OBR_model_1)
+      # # Diagnostic
+      # OBR_model_1
+      # #plot(OBR_model, variable = "^b_", regex = TRUE)
+      # pp_check(OBR_model_1)
       
       # # Model comparison
       # options(future.globals.maxSize = 2 * 1024^3) # because of memory limit is too restrictive
@@ -186,10 +185,13 @@ for (i in 1:length(List_Time_interval)){
       # 
       # model_parameters(loo_comp)
       
+      # Save model 1
+      saveRDS(OBR_model_1, paste0("/home/charlotte/Documents/Post-Doc/Stages/Laureen et Nathan/Analyse/Courbe de sensibilité/Models/", Sp_select, "_", Time_interval, ".rds"))
+      
       # Predict model 1
       ord_pred <- conditional_effects(OBR_model_1, effects = "TriggerLevel_scaled:Recorder", resp = "Relative_activity")[[1]]
-      
-      # Plot 
+
+      # Plot
       # Create parallel axes
       Breaks_values_SM4BAT = Activity_file_for_model %>%
         filter(Recorder=="SM4BAT") %>%
@@ -235,14 +237,14 @@ for (i in 1:length(List_Time_interval)){
           labels = as.character(-as.numeric(names(table(Activity_file_for_model$TriggerLevel_adjusted[Activity_file_for_model$Recorder == "Batcorder"]))))
         )
       )
-      
+
       # ifelse(!dir.exists(paste0("/home/charlotte/Documents/Post-Doc/Stages/Laureen et Nathan/Analyse/Courbe de sensibilité/", Time_interval)),
       #        dir.create(paste0("/home/charlotte/Documents/Post-Doc/Stages/Laureen et Nathan/Analyse/Courbe de sensibilité/", Time_interval)), FALSE
       # )
-      
+
       setwd(paste0("/home/charlotte/Documents/Post-Doc/Stages/Laureen et Nathan/Analyse/Courbe de sensibilité/", Time_interval))
       png(filename=paste(Sp_select,"_", "Sensitivity_curve_50.png",sep=""), height=1000, width=1500,res=150)
-      
+
       plot1 = ggplot(ord_pred, aes(x = TriggerLevel_scaled, y = estimate__, color = Recorder)) +
         geom_line(linewidth = 1) +
         geom_ribbon(aes(ymin = lower__, ymax = upper__, fill = Recorder), alpha = 0.2, color = NA) +
@@ -280,12 +282,12 @@ for (i in 1:length(List_Time_interval)){
           position = "bottom",
           theme = theme_guide(
             spacing = unit(7, "pt"))))
-      
+
       print(plot1)
       dev.off()
-      
+
       # Predict model 2
-      ord_pred2 <- conditional_effects(OBR_model_2, effects = "TriggerLevel_scaled:Recorder", 
+      ord_pred2 <- conditional_effects(OBR_model_2, effects = "TriggerLevel_scaled:Recorder",
                                        resp = "Relative_activity",
                                        conditions=data.frame(sm4bat_0_noise_insect_bat_activity = c(min(Activity_file_for_model$sm4bat_0_noise_insect_bat_activity),
                                                              mean(Activity_file_for_model$sm4bat_0_noise_insect_bat_activity),
@@ -295,11 +297,11 @@ for (i in 1:length(List_Time_interval)){
                          rep("High non-target activity", nrow(ord_pred2)/3)
       )
       ord_pred2$Type = fct_relevel(ord_pred2$Type, "Low non-target activity", "Mid non-target activity", "High non-target activity")
-      
-      # Plot 
+
+      # Plot
       setwd(paste0("/home/charlotte/Documents/Post-Doc/Stages/Laureen et Nathan/Analyse/Courbe de sensibilité/", Time_interval))
       png(filename=paste(Sp_select,"_", "Sensitivity_curve_50_non-targets.png",sep=""), height=700, width=1500,res=150)
-      
+
       plot2 = ggplot(ord_pred2, aes(x = TriggerLevel_scaled, y = estimate__, color = Recorder)) +
         facet_grid(cols = vars(Type)) +
         ylim(0,1) +
@@ -307,7 +309,7 @@ for (i in 1:length(List_Time_interval)){
         geom_ribbon(aes(ymin = lower__, ymax = upper__, fill = Recorder), alpha = 0.2, color = NA) +
         labs(y = paste0("Predicted Relative Activity for ", Sp_select)) +
         theme_minimal(base_size = 18)
-      
+
       print(plot2)
       dev.off()
       

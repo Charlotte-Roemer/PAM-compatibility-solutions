@@ -86,7 +86,7 @@ Activity_summary <- function(file, proba) {
     mutate(probability_filter = proba)
 }
 
-#### Calculate activity for species which was recorded at 0s #### 
+#### CALCULATE ACTIVITY FOR SPECIES WHICH WAS RECORDED AT 0 S #### 
 Species_activity_at_0 <- function(file) {
   Obs_0s = file %>% 
     filter(temps_debut == 0)
@@ -101,28 +101,31 @@ Species_activity_at_0 <- function(file) {
     mutate(espece = paste0(espece, "_0s"))
 }
 
-#### GATHERING COEFF OF GLM ####
+#### SCALE TRIGGER LEVEL ####
 
-get_eq <- function(coef1, recorder1) {
-  recorderID = paste0("ID", recorder1)
-  b <- coefs["(Intercept)"][[1]]
-  a <- coefs[recorderID][[1]]
-  eq <- paste0("y_", recorder1, " = exp(", round(a, 3), "x + ", round(b, 3), ")")
-  return(eq)
-}
-
-#### PLOTING EQUATION WITH DATAFRAME ####
-
-eq.df <- function(eq_df) {b <- coefs["(Intercept)"]
-if (eq_df != "adm") {b <- b + coefs[paste0("recorder", eq_df)]}
-return(b)}
-
-#### ADJUSTING COEFF FOR THE LAST GLMM ####
-
-adj_coeff <- function(adj_coeff) {
-  b <- coefs["(Intercept)"]
-  if (rec != "adm") {
-    b <- b + coefs[paste0("recorder", rec)]
+scale_trigger <- function(trig, table, rec) {
+  
+  # select recorder
+  tab <- table[table$Recorder == rec, ]
+  
+  # Sort by decreasing trigger level
+  tab <- tab[order(tab$TriggerLevel_adjusted, decreasing = TRUE), ]
+  
+  x <- tab$TriggerLevel_adjusted
+  y <- tab$TriggerLevel_scaled
+  
+  # Exact case
+  if (trig %in% x) {
+    return(y[x == trig][1])
   }
-  return(as.numeric(b))
+  
+  # Framing
+  x1 <- max(x[x > trig])
+  x2 <- min(x[x < trig])
+  
+  y1 <- y[x == x1][1]
+  y2 <- y[x == x2][1]
+  
+  # Linear interpolation
+  y1 + (trig - x1) * (y2 - y1) / (x2 - x1)
 }

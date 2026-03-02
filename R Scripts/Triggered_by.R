@@ -1,4 +1,5 @@
 
+set.seed(8) # to have reproducible results
 setwd("/home/charlotte/Documents/R/PAM-compatibility-solutions/R Scripts")
 source("fun_for_bats.R")
 
@@ -8,6 +9,8 @@ library(ggeffects)
 library(ggplot2)
 library(viridis)
 library(DHARMa)
+library(ordbetareg)
+library(loo)
 library(parameters)
 library(beepr)
 
@@ -71,7 +74,6 @@ List_bats_0s = c("Barbar", "Eptnil", "Eptser", "Hypsav", "Minsch", "Myoalc", "My
                  "Myonat", "Myopun", "MyospA", "Nyclas", "Nyclei", "Nycnoc", "Pipkuh", "Pipnat",
                  "Pippip", "Pippyg", "Pleaur", "Pleaus", "Plemac", "Rhieur", "Rhifer", "Rhihip",
                  "Tadten", "Vesmur")
-List_bats_0s = List_bats_0s[! List_bats_0s %in% Sp_select] # Removes focus species
 List_bats_0s = paste0(List_bats_0s, "_0s")
 
 Activity_non_target = Non_target_activity_file %>%
@@ -110,118 +112,28 @@ Activity_file_for_model = Activity_file_for_model %>%
 Activity_file_for_model$Recorder = as.factor(Activity_file_for_model$Recorder)
 Activity_file_for_model$ID = as.factor(Activity_file_for_model$ID)
 Activity_file_for_model$TriggerLevel_adjusted = as.factor(Activity_file_for_model$TriggerLevel_adjusted)
-#mycol <- c("Audiomoth"= "#E69F00","Batcorder"="#56B4E9","Batlogger"="#009E73","SM4BAT"="#D55E00")
 
-# #### DATA VISUALISATION ####
-# 
-# setwd("/home/charlotte/Documents/Post-Doc/Stages/Laureen et Nathan/Analyse/Exploration")
-# png(filename=paste(Sp_select,"_", "Material",sep=""), height=700, width=1000,res=150)
-# 
-# plot1 = ggplot(Activity_file_for_model, aes(x = Recorder, y = nb_triggered_files)) +
-#   geom_boxplot(aes(fill = TriggerLevel_Short), color = "grey25", linewidth = 0.5, coef = 1.5) +
-#   theme_minimal()
-# 
-# print(plot1)
-# dev.off()
-# 
-# png(filename=paste(Sp_select,"_", "Material_and_Vegetation.png",sep=""), height=700, width=1000,res=150)
-# 
-# plot2 = ggplot(Activity_file_for_model, aes(x = Distance_vegetation, y = nb_triggered_files, group=ID)) +
-#   geom_rug() +
-#   geom_smooth(aes(color = ID)) +
-#   theme_minimal()
-# 
-# print(plot2)
-# dev.off()
-# 
-# png(filename=paste(Sp_select,"_", "Material_and_non-target.png",sep=""), height=700, width=1000,res=150)
-# 
-# plot3 = ggplot(Activity_file_for_model, aes(x = sm4bat_0_noise_insect_bat_activity, y = nb_triggered_files, group=ID)) +
-#   geom_rug() +
-#   geom_smooth(aes(color = ID)) +
-#   theme_minimal()
-# 
-# print(plot3)
-# dev.off()
-
-#### MODEL ENVIRONMENT EFFECT ####
-# Question: how to account for the distance to vegetation (DV), and for the insect/noise activity (IA)?
-# i.e. is there an interaction between recorder sensitivity and DV or IA?
-
-# # Comment to keep the Audiomoths
-# Activity_file_for_model = Activity_file_for_model %>% 
-#   filter(Recorder != "Audiomoth") %>% 
-#   droplevels()
-
-# Activity
-# NULL Model
-glm1 <- glmmTMB(nb_triggered_files~ID +
-                  (1|Site),
-                data = Activity_file_for_model, family = nbinom2)
-
-# interaction with distance to vegetation:
-glm2 = glmmTMB(nb_triggered_files ~ Distance_vegetation * ID +
-                 (1|Site),
-               data=Activity_file_for_model, family = nbinom2)
-
-# interaction with insect activity:
-glm3 = glmmTMB(nb_triggered_files ~ sqrt(sm4bat_0_noise_insect_bat_activity) * ID +
-                 (1|Site),
-               data=Activity_file_for_model, family = nbinom2)
-
-# interaction with distance to vegetation + interaction with insect activity:
-glm4 = glmmTMB(nb_triggered_files ~ sqrt(sm4bat_0_noise_insect_bat_activity) * ID + Distance_vegetation * ID +
-                 (1|Site),
-               data=Activity_file_for_model, family = nbinom2)
-
-# simulateResiduals(glm1, plot = TRUE)
-# simulateResiduals(glm2, plot = TRUE)
-# simulateResiduals(glm3, plot = TRUE)
-# simulateResiduals(glm4, plot = TRUE)
-
-# # Model comparison :
-AIC_Table = AIC(glm1,glm2,glm3, glm4)
-AIC_Table$Species = Sp_select
-# Save
-write_csv(AIC_Table, paste0("/home/charlotte/Documents/Post-Doc/Stages/Laureen et Nathan/Analyse/Effet environnement/5_seconds/", Sp_select,"_AIC.csv"))
-
-# summary(glm2)
-
-#### PLOT ####
-
-pr1 = predict_response(glm2, terms = c("Distance_vegetation", "ID"), bias_correction = TRUE)
-
-setwd("/home/charlotte/Documents/Post-Doc/Stages/Laureen et Nathan/Analyse/Effet environnement/5_seconds")
-png(filename=paste(Sp_select,"_", "Distance_vegetation_GLMM.png",sep=""), height=700, width=1000,res=150)
-
-plot1 = ggplot(pr1, aes(x = x, y = predicted, colour = group)) +
-  geom_line(linewidth = 1) +
-  geom_ribbon(aes(ymin = conf.low, ymax = conf.high, fill = group), alpha = 0.2, color = NA) +
-  labs(y = paste0("Number of triggered recordings with ", Sp_select),
-       x = "Distance to vegetation (m)",
-       color = "", fill = "") +
-  scale_y_log10() +
-  theme_minimal()
-
-print(plot1)
-dev.off()
-
-pr2 = predict_response(glm4, terms = c("sm4bat_0_noise_insect_bat_activity", "ID"), bias_correction = TRUE)
-pr2$x=(pr2$x)^2
-
-setwd("/home/charlotte/Documents/Post-Doc/Stages/Laureen et Nathan/Analyse/Effet environnement/5_seconds")
-png(filename=paste(Sp_select,"_", "Non-target_activity_GLMM.png",sep=""), height=700, width=1000,res=150)
-
-plot2 = ggplot(pr2, aes(x = x, y = predicted, colour = group)) +
-  geom_line(linewidth = 1) +
-  geom_ribbon(aes(ymin = conf.low, ymax = conf.high, fill = group), alpha = 0.2, color = NA) +
-  labs(y = paste0("Number of triggered recordings with ", Sp_select),
-       x = "Number of recordings triggered by non-targets",
-       color = "", fill = "") +
-  scale_y_log10() +
-  theme_minimal()
-
-print(plot2)
-dev.off()
-
-
+# Show % files triggered by insects or bats or noise
+for(i in 1:length(names(table(Activity_file_for_model$ID)))){
+  ID_i = names(table(Activity_file_for_model$ID))[i]
+  
+  setwd("/home/charlotte/Documents/Post-Doc/Stages/Laureen et Nathan/Analyse/Effet environnement")
+  png(filename=paste(ID_i,"_", "Triggering.png",sep=""), height=700, width=1000,res=150)
+  plot0 = Activity_file_for_model %>% 
+    filter(ID == ID_i) %>% 
+    mutate(Bats = nb_triggered_files_bats/(nb_triggered_files_bats + nb_triggered_files_insects + nb_triggered_files_noise),
+           Noise = nb_triggered_files_noise/(nb_triggered_files_bats + nb_triggered_files_insects + nb_triggered_files_noise),
+           Insects = nb_triggered_files_insects/(nb_triggered_files_bats + nb_triggered_files_insects + nb_triggered_files_noise),
+           month = month(DateNight)) %>% 
+    select(Bats, Noise, Insects, DateNight, month) %>% 
+    pivot_longer(cols = c(Bats, Noise, Insects),
+                 names_to = "Triggered_by",
+                 values_to = "n") %>% 
+    ggplot(aes(y = n, x = Triggered_by, colour = Triggered_by)) +
+    geom_boxplot() +
+    facet_grid(vars(month)) +
+    guides(colour = "none")+
+    theme_bw()
+  print(plot0)
+  dev.off()
+}
